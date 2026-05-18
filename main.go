@@ -21,9 +21,9 @@ func main() {
 	cfg := &apiConfig{}
 
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", fs)))
-	mux.HandleFunc("/healthz", myhandler)
-	mux.HandleFunc("/metrics", cfg.metricshandler)
-	mux.HandleFunc("/reset", cfg.resethandler)
+	mux.HandleFunc("GET /healthz", myhandler)
+	mux.HandleFunc("GET /metrics", cfg.metricshandler)
+	mux.HandleFunc("POST /reset", cfg.resethandler)
 
 	log.Fatal(server.ListenAndServe())
 
