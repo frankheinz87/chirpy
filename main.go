@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -79,8 +80,8 @@ func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type returnVals struct {
-		Error string `json:"error,omitempty"`
-		Valid bool   `json:"valid,omitempty"`
+		Error       string `json:"error,omitempty"`
+		CleanedBody string `json:"cleaned_body,omitempty"`
 	}
 
 	respBody := returnVals{}
@@ -91,9 +92,11 @@ func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) 
 			Error: "Chirp is too long",
 		}
 		statusCode = http.StatusBadRequest
+		return
 	} else {
+		result := cleanProfanity(params.Body)
 		respBody = returnVals{
-			Valid: true,
+			CleanedBody: result,
 		}
 	}
 
@@ -106,4 +109,20 @@ func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	w.Write(dat)
+}
+
+func cleanProfanity(body string) string {
+	badWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		if _, ok := badWords[strings.ToLower(word)]; ok {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }
