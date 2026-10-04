@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/frankheinz87/chirpy/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -18,6 +20,13 @@ import (
 type apiConfig struct {
 	fileserverHits  atomic.Int32
 	databaseQueries *database.Queries
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func main() {
@@ -46,6 +55,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", cfg.metricshandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resethandler)
 	mux.HandleFunc("POST /api/validate_chirp", cfg.validationhandler)
+	mux.HandleFunc("POST /api/users", cfg.userhandler)
 
 	log.Fatal(server.ListenAndServe())
 
@@ -144,4 +154,50 @@ func cleanProfanity(body string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	nullableEmail := sql.NullString{
+		String: params.Email,
+		Valid:  params.Email != "", // Becomes false if the string is empty
+	}
+
+	user, err := cfg.databaseQueries.CreateUser(r.Context(), nullableEmail)
+
+	if err != nil {
+		log.Printf("Error creating user: %s", err)
+		return
+	}
+
+	respBody := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedSt,
+		Email:     user.Email.String,
+	}
+	statusCode := http.StatusCreated
+
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	w.Write(dat)
+
 }
