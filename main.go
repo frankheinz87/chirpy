@@ -20,6 +20,7 @@ import (
 type apiConfig struct {
 	fileserverHits  atomic.Int32
 	databaseQueries *database.Queries
+	platform        string
 }
 
 type User struct {
@@ -32,6 +33,7 @@ type User struct {
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+	pt := os.Getenv("PLATFORM")
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
@@ -48,6 +50,7 @@ func main() {
 	fs := http.FileServer(http.Dir("."))
 	cfg := &apiConfig{
 		databaseQueries: dbQueries,
+		platform:        pt,
 	}
 
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", fs)))
@@ -82,7 +85,20 @@ func (cfg *apiConfig) metricshandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resethandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	cfg.fileserverHits.Store(0)
+	err := cfg.databaseQueries.DeleteUsers(r.Context())
+
+	if err != nil {
+		log.Printf("Error deleting users: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 }
@@ -185,7 +201,7 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 	respBody := User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedSt,
+		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email.String,
 	}
 	statusCode := http.StatusCreated

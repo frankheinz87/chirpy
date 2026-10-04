@@ -13,12 +13,12 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, created_at, updated_at, email)
 VALUES (
-    id = gen_random_uuid(),
-    created_at = NOW(),
-    updated_at = NOW(),
-    email = $1
+    gen_random_uuid(),
+    NOW(),
+    NOW(),
+    $1
 )
-RETURNING id, created_at, updated_st, email
+RETURNING id, created_at, updated_at, email
 `
 
 func (q *Queries) CreateUser(ctx context.Context, email sql.NullString) (User, error) {
@@ -27,7 +27,7 @@ func (q *Queries) CreateUser(ctx context.Context, email sql.NullString) (User, e
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
-		&i.UpdatedSt,
+		&i.UpdatedAt,
 		&i.Email,
 	)
 	return i, err
