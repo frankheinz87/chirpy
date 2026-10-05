@@ -30,6 +30,18 @@ type User struct {
 	Email     string    `json:"email"`
 }
 
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
 func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
@@ -116,63 +128,35 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 		UserID uuid.UUID `json:"user_id"`
 	}
 
-	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(http.StatusBadRequest)
+
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
 		return
 	}
-	type returnVals struct {
-		Error     string    `json:"error,omitempty"`
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Body      string    `json:"body,omitempty"`
-		UserID    uuid.UUID `json:"user_id"`
-	}
-
-	respBody := returnVals{}
-	statusCode := http.StatusOK
 
 	if len(params.Body) > 140 {
-		respBody = returnVals{
-			Error: "Chirp is too long",
-		}
-		statusCode = http.StatusBadRequest
-	} else {
-		cleaned := cleanProfanity(params.Body)
-
-		chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
-			Body:   cleaned,
-			UserID: params.UserID,
-		})
-
-		if err != nil {
-			log.Printf("Error creating chirp: %s", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		respBody = returnVals{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
-		}
-		statusCode = http.StatusCreated
-	}
-
-	dat, err := json.Marshal(respBody)
-	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	w.Write(dat)
+
+	chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   cleanProfanity(params.Body),
+		UserID: params.UserID,
+	})
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 }
 
 func cleanProfanity(body string) string {
@@ -196,12 +180,10 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 	}
 
-	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(http.StatusBadRequest)
+
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
 		return
 	}
 
@@ -213,7 +195,7 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 	user, err := cfg.databaseQueries.CreateUser(r.Context(), nullableEmail)
 
 	if err != nil {
-		log.Printf("Error creating user: %s", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create user")
 		return
 	}
 
@@ -225,14 +207,22 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 	}
 	statusCode := http.StatusCreated
 
-	dat, err := json.Marshal(respBody)
+	respondWithJSON(w, statusCode, respBody)
+
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	dat, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("Error marshalling JSON: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
+	w.WriteHeader(code)
 	w.Write(dat)
+}
 
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	respondWithJSON(w, code, errorResponse{Error: msg})
 }
