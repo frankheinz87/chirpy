@@ -141,13 +141,12 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 			Error: "Chirp is too long",
 		}
 		statusCode = http.StatusBadRequest
-		return
 	} else {
 		cleaned := cleanProfanity(params.Body)
 
 		chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body:   cleaned,
-			UserID: uuid.NullUUID{UUID: params.UserID, Valid: true},
+			UserID: params.UserID,
 		})
 
 		if err != nil {
@@ -160,7 +159,7 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: chirp.CreatedAt,
 			UpdatedAt: chirp.UpdatedAt,
 			Body:      chirp.Body,
-			UserID:    chirp.UserID.UUID,
+			UserID:    chirp.UserID,
 		}
 		statusCode = http.StatusCreated
 	}
