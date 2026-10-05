@@ -68,8 +68,9 @@ func main() {
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", fs)))
 	mux.HandleFunc("GET /api/healthz", myhandler)
 	mux.HandleFunc("GET /admin/metrics", cfg.metricshandler)
+	mux.HandleFunc("GET /api/chirps", cfg.getchirphandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resethandler)
-	mux.HandleFunc("POST /api/chirps", cfg.chirphandler)
+	mux.HandleFunc("POST /api/chirps", cfg.postchirphandler)
 	mux.HandleFunc("POST /api/users", cfg.userhandler)
 
 	log.Fatal(server.ListenAndServe())
@@ -122,7 +123,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postchirphandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Body   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
@@ -157,6 +158,30 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
 	})
+}
+
+func (cfg *apiConfig) getchirphandler(w http.ResponseWriter, r *http.Request) {
+
+	dbchirps, err := cfg.databaseQueries.GetChirps(r.Context())
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
+		return
+	}
+
+	chirpslice := make([]Chirp, len(dbchirps))
+
+	for i, dbchirp := range dbchirps {
+		chirpslice[i] = Chirp{
+			ID:        dbchirp.ID,
+			CreatedAt: dbchirp.CreatedAt,
+			UpdatedAt: dbchirp.UpdatedAt,
+			Body:      dbchirp.Body,
+			UserID:    dbchirp.UserID,
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, chirpslice)
 }
 
 func cleanProfanity(body string) string {
