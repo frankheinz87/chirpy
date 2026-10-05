@@ -113,7 +113,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"userid"`
+		UserID uuid.UUID `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -124,14 +124,13 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
 	type returnVals struct {
-		Error       string    `json:"error,omitempty"`
-		ID          uuid.UUID `json:"id,omitempty"`
-		CreatedAt   time.Time `json:"created_at,omitempty"`
-		UpdatedAt   time.Time `json:"updated_at,omitempty"`
-		CleanedBody string    `json:"cleaned_body,omitempty"`
-		UserID      uuid.UUID `json:"user_id,omitempty"`
+		Error     string    `json:"error,omitempty"`
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body,omitempty"`
+		UserID    uuid.UUID `json:"user_id"`
 	}
 
 	respBody := returnVals{}
@@ -148,7 +147,7 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 
 		chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body:   cleaned,
-			UserID: uuid.NullUUID{UUID: params.UserID},
+			UserID: uuid.NullUUID{UUID: params.UserID, Valid: true},
 		})
 
 		if err != nil {
@@ -156,13 +155,12 @@ func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
 		respBody = returnVals{
-			ID:          chirp.ID,
-			CreatedAt:   chirp.CreatedAt,
-			UpdatedAt:   chirp.UpdatedAt,
-			CleanedBody: chirp.Body,
-			UserID:      chirp.UserID.UUID,
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID.UUID,
 		}
 		statusCode = http.StatusCreated
 	}
