@@ -57,7 +57,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", myhandler)
 	mux.HandleFunc("GET /admin/metrics", cfg.metricshandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resethandler)
-	mux.HandleFunc("POST /api/validate_chirp", cfg.validationhandler)
+	mux.HandleFunc("POST /api/chirps", cfg.chirphandler)
 	mux.HandleFunc("POST /api/users", cfg.userhandler)
 
 	log.Fatal(server.ListenAndServe())
@@ -110,9 +110,10 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) chirphandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body string `json:"body"`
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"userid"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -125,8 +126,12 @@ func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	type returnVals struct {
-		Error       string `json:"error,omitempty"`
-		CleanedBody string `json:"cleaned_body,omitempty"`
+		Error       string    `json:"error,omitempty"`
+		ID          uuid.UUID `json:"id,omitempty"`
+		CreatedAt   time.Time `json:"created_at,omitempty"`
+		UpdatedAt   time.Time `json:"updated_at,omitempty"`
+		CleanedBody string    `json:"cleaned_body,omitempty"`
+		UserID      uuid.UUID `json:"user_id,omitempty"`
 	}
 
 	respBody := returnVals{}
@@ -139,10 +144,27 @@ func (cfg *apiConfig) validationhandler(w http.ResponseWriter, r *http.Request) 
 		statusCode = http.StatusBadRequest
 		return
 	} else {
-		result := cleanProfanity(params.Body)
-		respBody = returnVals{
-			CleanedBody: result,
+		cleaned := cleanProfanity(params.Body)
+
+		chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+			Body:   cleaned,
+			UserID: uuid.NullUUID{UUID: params.UserID},
+		})
+
+		if err != nil {
+			log.Printf("Error creating chirp: %s", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
+
+		respBody = returnVals{
+			ID:          chirp.ID,
+			CreatedAt:   chirp.CreatedAt,
+			UpdatedAt:   chirp.UpdatedAt,
+			CleanedBody: chirp.Body,
+			UserID:      chirp.UserID.UUID,
+		}
+		statusCode = http.StatusCreated
 	}
 
 	dat, err := json.Marshal(respBody)
