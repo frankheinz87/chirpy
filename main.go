@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/frankheinz87/chirpy/internal/auth"
 	"github.com/frankheinz87/chirpy/internal/database"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -73,6 +74,7 @@ func main() {
 	mux.HandleFunc("POST /admin/reset", cfg.resethandler)
 	mux.HandleFunc("POST /api/chirps", cfg.postchirphandler)
 	mux.HandleFunc("POST /api/users", cfg.userhandler)
+	mux.HandleFunc("POST /api/login", cfg.loginhandler)
 
 	log.Fatal(server.ListenAndServe())
 
@@ -228,7 +230,8 @@ func cleanProfanity(body string) string {
 
 func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email string `json:"email"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	params := parameters{}
@@ -242,8 +245,17 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 		String: params.Email,
 		Valid:  params.Email != "", // Becomes false if the string is empty
 	}
+	hashedPW, err := auth.HashPassword(params.Password)
 
-	user, err := cfg.databaseQueries.CreateUser(r.Context(), nullableEmail)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password")
+		return
+	}
+
+	user, err := cfg.databaseQueries.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          nullableEmail,
+		HashedPassword: hashedPW,
+	})
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create user")
@@ -260,6 +272,13 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, statusCode, respBody)
 
+}
+
+func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
