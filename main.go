@@ -245,6 +245,7 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 		String: params.Email,
 		Valid:  params.Email != "", // Becomes false if the string is empty
 	}
+
 	hashedPW, err := auth.HashPassword(params.Password)
 
 	if err != nil {
@@ -279,6 +280,41 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		Email    string `json:"email"`
 	}
+
+	params := parameters{}
+
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
+		return
+	}
+
+	nullableEmail := sql.NullString{
+		String: params.Email,
+		Valid:  params.Email != "", // Becomes false if the string is empty
+	}
+
+	user, err := cfg.databaseQueries.GetUserByEmail(r.Context(), nullableEmail)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "incorrect email or password")
+		return
+	}
+
+	validPassword, err := auth.CheckPasswordHash(params.Password, user.HashedPassword)
+
+	if err != nil || !validPassword {
+		respondWithError(w, http.StatusUnauthorized, "incorrect email or password")
+		return
+	}
+
+	respBody := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email.String,
+	}
+
+	respondWithJSON(w, http.StatusOK, respBody)
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
