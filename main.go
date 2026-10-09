@@ -148,9 +148,23 @@ func (cfg *apiConfig) postchirphandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenString, err := auth.GetBearerToken(r.Header)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	authUserID, err := auth.ValidateJWT(tokenString, cfg.tokenSecret)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
 	chirp, err := cfg.databaseQueries.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleanProfanity(params.Body),
-		UserID: params.UserID,
+		UserID: authUserID,
 	})
 
 	if err != nil {
