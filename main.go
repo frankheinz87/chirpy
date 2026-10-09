@@ -22,6 +22,7 @@ type apiConfig struct {
 	fileserverHits  atomic.Int32
 	databaseQueries *database.Queries
 	platform        string
+	tokenSecret     string
 }
 
 type User struct {
@@ -47,6 +48,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	pt := os.Getenv("PLATFORM")
+	secret := os.Getenv("SECRET")
 	db, err := sql.Open("postgres", dbURL)
 
 	if err != nil {
@@ -64,6 +66,7 @@ func main() {
 	cfg := &apiConfig{
 		databaseQueries: dbQueries,
 		platform:        pt,
+		tokenSecret:     secret,
 	}
 
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", fs)))
