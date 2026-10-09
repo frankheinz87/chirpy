@@ -30,6 +30,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 type errorResponse struct {
@@ -280,8 +281,9 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		EXpiresInSeconds *int   `json:"expires_in_seconds"`
 	}
 
 	params := parameters{}
@@ -290,6 +292,14 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
 		return
 	}
+
+	expiresIn := 3600
+
+	if params.EXpiresInSeconds != nil && *params.EXpiresInSeconds < 3600 {
+		expiresIn = *params.EXpiresInSeconds
+	}
+
+	duration := time.Duration(expiresIn) * time.Second
 
 	nullableEmail := sql.NullString{
 		String: params.Email,
@@ -310,11 +320,19 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, duration)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error creating token")
+		return
+	}
+
 	respBody := User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email.String,
+		Token:     token,
 	}
 
 	respondWithJSON(w, http.StatusOK, respBody)
