@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -180,6 +181,68 @@ func TestValidateJWT(t *testing.T) {
 			}
 			if gotUserID != test.wantUserID {
 				t.Errorf("ValidateJWT() user ID = %v, want %v", gotUserID, test.wantUserID)
+			}
+		})
+	}
+}
+
+func TestGetBearerToken(t *testing.T) {
+	tests := []struct {
+		name      string
+		headers   http.Header
+		wantToken string
+		wantErr   bool
+	}{
+		{
+			name:      "valid bearer token",
+			headers:   http.Header{"Authorization": []string{"Bearer abc123"}},
+			wantToken: "abc123",
+		},
+		{
+			name:      "case-insensitive bearer scheme",
+			headers:   http.Header{"Authorization": []string{"bEaReR AbC123"}},
+			wantToken: "AbC123",
+		},
+		{
+			name:      "trim token whitespace",
+			headers:   http.Header{"Authorization": []string{"Bearer   abc123  "}},
+			wantToken: "abc123",
+		},
+		{
+			name:    "missing authorization header",
+			headers: make(http.Header),
+			wantErr: true,
+		},
+		{
+			name:    "empty authorization header",
+			headers: http.Header{"Authorization": []string{""}},
+			wantErr: true,
+		},
+		{
+			name:    "wrong authorization scheme",
+			headers: http.Header{"Authorization": []string{"Basic abc123"}},
+			wantErr: true,
+		},
+		{
+			name:    "missing token",
+			headers: http.Header{"Authorization": []string{"Bearer"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty token",
+			headers: http.Header{"Authorization": []string{"Bearer   "}},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotToken, err := GetBearerToken(test.headers)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("GetBearerToken() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if gotToken != test.wantToken {
+				t.Errorf("GetBearerToken() token = %q, want %q", gotToken, test.wantToken)
 			}
 		})
 	}
