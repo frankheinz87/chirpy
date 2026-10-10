@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/hex"
 	"net/http"
 	"testing"
 	"time"
@@ -245,5 +246,38 @@ func TestGetBearerToken(t *testing.T) {
 				t.Errorf("GetBearerToken() token = %q, want %q", gotToken, test.wantToken)
 			}
 		})
+	}
+}
+
+func TestMakeRefreshToken(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+	}{
+		{name: "first generated token", token: MakeRefreshToken()},
+		{name: "second generated token", token: MakeRefreshToken()},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.token == "" {
+				t.Fatal("MakeRefreshToken() returned an empty token")
+			}
+
+			decodedToken, err := hex.DecodeString(test.token)
+			if err != nil {
+				t.Fatalf("MakeRefreshToken() returned a non-hex token %q: %v", test.token, err)
+			}
+			if len(decodedToken) != 32 {
+				t.Errorf("decoded token length = %d, want 32", len(decodedToken))
+			}
+			if len(test.token) != 64 {
+				t.Errorf("token length = %d, want 64", len(test.token))
+			}
+		})
+	}
+
+	if tests[0].token == tests[1].token {
+		t.Error("two MakeRefreshToken() calls returned the same token")
 	}
 }
