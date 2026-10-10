@@ -81,6 +81,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", cfg.userhandler)
 	mux.HandleFunc("POST /api/login", cfg.loginhandler)
 	mux.HandleFunc("POST /api/refresh", cfg.refreshhandler)
+	mux.HandleFunc("POST /api/revoke", cfg.revokehandler)
 
 	log.Fatal(server.ListenAndServe())
 
@@ -413,4 +414,24 @@ func (cfg *apiConfig) refreshhandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, respBody)
+}
+
+func (cfg *apiConfig) revokehandler(w http.ResponseWriter, r *http.Request) {
+	header := r.Header
+
+	refreshTokenString, err := auth.GetBearerToken(header)
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error retrieving refresh token from header")
+		return
+	}
+
+	err = cfg.databaseQueries.RevokeRefreshToken(r.Context(), refreshTokenString)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error revoking refresh token")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
