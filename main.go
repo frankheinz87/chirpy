@@ -26,11 +26,12 @@ type apiConfig struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 type errorResponse struct {
@@ -295,9 +296,8 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		EXpiresInSeconds *int   `json:"expires_in_seconds"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 
 	params := parameters{}
@@ -307,13 +307,7 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresIn := 3600
-
-	if params.EXpiresInSeconds != nil && *params.EXpiresInSeconds < 3600 {
-		expiresIn = *params.EXpiresInSeconds
-	}
-
-	duration := time.Duration(expiresIn) * time.Second
+	expiresIn := time.Hour
 
 	nullableEmail := sql.NullString{
 		String: params.Email,
@@ -334,19 +328,38 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, duration)
+	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, expiresIn)
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "error creating token")
 		return
 	}
 
+	refreshToken := auth.MakeRefreshToken()
+
+	if refreshToken == "" {
+		respondWithError(w, http.StatusInternalServerError, "error creating refresh token")
+		return
+	}
+
+	dbRefreshToken, err := cfg.databaseQueries.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(time.Hour * 1440),
+	})
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error saving refresh token in database")
+		return
+	}
+
 	respBody := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email.String,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email.String,
+		Token:        token,
+		RefreshToken: dbRefreshToken.Token,
 	}
 
 	respondWithJSON(w, http.StatusOK, respBody)
