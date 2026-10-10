@@ -80,6 +80,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", cfg.postchirphandler)
 	mux.HandleFunc("POST /api/users", cfg.userhandler)
 	mux.HandleFunc("POST /api/login", cfg.loginhandler)
+	mux.HandleFunc("POST /api/refresh", cfg.refreshhandler)
 
 	log.Fatal(server.ListenAndServe())
 
@@ -379,4 +380,37 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
 	respondWithJSON(w, code, errorResponse{Error: msg})
+}
+
+func (cfg *apiConfig) refreshhandler(w http.ResponseWriter, r *http.Request) {
+	header := r.Header
+
+	refreshTokenString, err := auth.GetBearerToken(header)
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error retrieving refresh token from header")
+		return
+	}
+
+	dbRefreshToken, err := cfg.databaseQueries.GetTokenByString(r.Context(), refreshTokenString)
+
+	if err != nil || dbRefreshToken.RevokedAt.Valid || dbRefreshToken.ExpiresAt.Before(time.Now()) {
+		respondWithError(w, http.StatusUnauthorized, "error retrieving refresh token in database")
+		return
+	}
+
+	newToken, err := auth.MakeJWT(dbRefreshToken.UserID, cfg.tokenSecret, time.Hour)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "error issueing new jwt")
+		return
+	}
+
+	respBody := struct {
+		Token string `json:"token"`
+	}{
+		Token: newToken,
+	}
+
+	respondWithJSON(w, http.StatusOK, respBody)
 }
