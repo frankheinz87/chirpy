@@ -82,6 +82,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", cfg.loginhandler)
 	mux.HandleFunc("POST /api/refresh", cfg.refreshhandler)
 	mux.HandleFunc("POST /api/revoke", cfg.revokehandler)
+	mux.HandleFunc("PUT /api/users", cfg.updatehandler)
 
 	log.Fatal(server.ListenAndServe())
 
@@ -434,4 +435,69 @@ func (cfg *apiConfig) revokehandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (cfg *apiConfig) updatehandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+
+	params := parameters{}
+
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
+		return
+	}
+
+	if params.Email == "" || params.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Email and password are required")
+		return
+	}
+
+	tokenString, err := auth.GetBearerToken(r.Header)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "error retrieving access token")
+		return
+	}
+
+	userID, err := auth.ValidateJWT(tokenString, cfg.tokenSecret)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "invalid access token")
+		return
+	}
+
+	hashedPW, err := auth.HashPassword(params.Password)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't hash password")
+		return
+	}
+
+	nullableEmail := sql.NullString{
+		String: params.Email,
+		Valid:  params.Email != "", // Becomes false if the string is empty
+	}
+
+	user, err := cfg.databaseQueries.UpdateUser(r.Context(), database.UpdateUserParams{
+		Email:          nullableEmail,
+		HashedPassword: hashedPW,
+		ID:             userID,
+	})
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error updating user info")
+		return
+	}
+
+	respBody := User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email.String,
+	}
+
+	respondWithJSON(w, http.StatusOK, respBody)
 }
