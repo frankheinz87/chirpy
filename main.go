@@ -32,6 +32,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type errorResponse struct {
@@ -82,6 +83,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", cfg.loginhandler)
 	mux.HandleFunc("POST /api/refresh", cfg.refreshhandler)
 	mux.HandleFunc("POST /api/revoke", cfg.revokehandler)
+	mux.HandleFunc("POST /api/polka/webhooks", cfg.polkahandler)
 	mux.HandleFunc("PUT /api/users", cfg.updatehandler)
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", cfg.deletechirphandler)
 
@@ -287,10 +289,11 @@ func (cfg *apiConfig) userhandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respBody := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email.String,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email.String,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 	statusCode := http.StatusCreated
 
@@ -364,6 +367,7 @@ func (cfg *apiConfig) loginhandler(w http.ResponseWriter, r *http.Request) {
 		Email:        user.Email.String,
 		Token:        token,
 		RefreshToken: dbRefreshToken.Token,
+		IsChirpyRed:  user.IsChirpyRed,
 	}
 
 	respondWithJSON(w, http.StatusOK, respBody)
@@ -494,10 +498,11 @@ func (cfg *apiConfig) updatehandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respBody := User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email.String,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email.String,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	respondWithJSON(w, http.StatusOK, respBody)
@@ -542,6 +547,36 @@ func (cfg *apiConfig) deletechirphandler(w http.ResponseWriter, r *http.Request)
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "error deleting chirp")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (cfg *apiConfig) polkahandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	params := parameters{}
+
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters")
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	_, err := cfg.databaseQueries.UpgradeUser(r.Context(), params.Data.UserID)
+
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
