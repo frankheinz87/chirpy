@@ -193,7 +193,24 @@ func (cfg *apiConfig) postchirphandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) getchirpshandler(w http.ResponseWriter, r *http.Request) {
 
-	dbchirps, err := cfg.databaseQueries.GetChirps(r.Context())
+	var dbchirps []database.Chirp
+	var err error
+
+	s := r.URL.Query().Get("author_id")
+	// s is a string that contains the value of the author_id query parameter
+	// if it exists, or an empty string if it doesn't
+
+	uuid, err := uuid.Parse(s)
+
+	if err != nil {
+		if s != "" {
+			respondWithError(w, http.StatusBadRequest, "invalid author id")
+			return
+		}
+		dbchirps, err = cfg.databaseQueries.GetChirps(r.Context())
+	} else {
+		dbchirps, err = cfg.databaseQueries.GetChirpsByAuthor(r.Context(), uuid)
+	}
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps")
