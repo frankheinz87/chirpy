@@ -249,6 +249,68 @@ func TestGetBearerToken(t *testing.T) {
 	}
 }
 
+func TestGetAPIKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers http.Header
+		wantKey string
+		wantErr bool
+	}{
+		{
+			name:    "valid API key",
+			headers: http.Header{"Authorization": []string{"Apikey abc123"}},
+			wantKey: "abc123",
+		},
+		{
+			name:    "case-insensitive API key scheme",
+			headers: http.Header{"Authorization": []string{"aPiKeY AbC123"}},
+			wantKey: "AbC123",
+		},
+		{
+			name:    "trim key whitespace",
+			headers: http.Header{"Authorization": []string{"Apikey   abc123  "}},
+			wantKey: "abc123",
+		},
+		{
+			name:    "missing authorization header",
+			headers: make(http.Header),
+			wantErr: true,
+		},
+		{
+			name:    "empty authorization header",
+			headers: http.Header{"Authorization": []string{""}},
+			wantErr: true,
+		},
+		{
+			name:    "wrong authorization scheme",
+			headers: http.Header{"Authorization": []string{"Bearer abc123"}},
+			wantErr: true,
+		},
+		{
+			name:    "missing key",
+			headers: http.Header{"Authorization": []string{"Apikey"}},
+			wantErr: true,
+		},
+		{
+			name:    "empty key",
+			headers: http.Header{"Authorization": []string{"Apikey   "}},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotKey, err := GetAPIKey(test.headers)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("GetAPIKey() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if gotKey != test.wantKey {
+				t.Errorf("GetAPIKey() key = %q, want %q", gotKey, test.wantKey)
+			}
+		})
+	}
+}
+
 func TestMakeRefreshToken(t *testing.T) {
 	tests := []struct {
 		name  string
