@@ -564,6 +564,18 @@ func (cfg *apiConfig) polkahandler(w http.ResponseWriter, r *http.Request) {
 		} `json:"data"`
 	}
 
+	apiKey, err := auth.GetAPIKey(r.Header)
+
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "error retrieving apikey from header")
+		return
+	}
+
+	if apiKey != cfg.polkaKey {
+		respondWithError(w, http.StatusUnauthorized, "provided apikey is not correct")
+		return
+	}
+
 	params := parameters{}
 
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
@@ -576,7 +588,7 @@ func (cfg *apiConfig) polkahandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := cfg.databaseQueries.UpgradeUser(r.Context(), params.Data.UserID)
+	_, err = cfg.databaseQueries.UpgradeUser(r.Context(), params.Data.UserID)
 
 	if err != nil {
 		respondWithError(w, http.StatusNotFound, "user not found")
