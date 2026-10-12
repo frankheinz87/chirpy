@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -196,14 +197,15 @@ func (cfg *apiConfig) getchirpshandler(w http.ResponseWriter, r *http.Request) {
 	var dbchirps []database.Chirp
 	var err error
 
-	s := r.URL.Query().Get("author_id")
+	author := r.URL.Query().Get("author_id")
+	sort := r.URL.Query().Get("sort")
 	// s is a string that contains the value of the author_id query parameter
 	// if it exists, or an empty string if it doesn't
 
-	uuid, err := uuid.Parse(s)
+	uuid, err := uuid.Parse(author)
 
 	if err != nil {
-		if s != "" {
+		if author != "" {
 			respondWithError(w, http.StatusBadRequest, "invalid author id")
 			return
 		}
@@ -227,6 +229,12 @@ func (cfg *apiConfig) getchirpshandler(w http.ResponseWriter, r *http.Request) {
 			Body:      dbchirp.Body,
 			UserID:    dbchirp.UserID,
 		}
+	}
+
+	if sort == "desc" {
+		slices.SortFunc(chirpslice, func(a, b Chirp) int {
+			return b.CreatedAt.Compare(a.CreatedAt)
+		})
 	}
 
 	respondWithJSON(w, http.StatusOK, chirpslice)
